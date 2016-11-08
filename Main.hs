@@ -5,6 +5,7 @@ module Main where
 import Text.HTML.Scalpel
 import Control.Applicative
 import Control.Monad (guard)
+import System.IO (readFile)
 
 data Role = Titolare | Riserva
           deriving (Show)
@@ -20,6 +21,8 @@ data PlayerInfos = PlayerInfos
 
 main :: IO ()
 main = do
+    -- str <- readFile "Prova.html"
+    -- let res = scrapeStringLike str myScraper
     res <- scrapeURL "http://www.fantagazzetta.com/probabili-formazioni-serie-a" myScraper
     case res of
          Nothing -> putStrLn "Errore"
@@ -27,8 +30,8 @@ main = do
 
 
 -- myScraper :: Scraper String [String]
-myScraper = chroot ("div" @: ["id" @= "sqtab"]) innerScraper
-    where innerScraper = chroots ("div" @: [hasClass "pgroup"]) (Left <$> squalificati <|> Right <$> diffidati)
+myScraper = chroot ("div" @: ["id" @= "artContainer"] // ("div" @: ["id" @= "sqtab"])) innerScraper
+    where innerScraper = chroots ("div" @: [hasClass "pgroup"]) ballottaggi -- (Left <$> squalificati <|> Right <$> diffidati)
 
 player = do
     name <- text (tagSelector "a")
@@ -48,10 +51,17 @@ altriCalciatori section action = do
 
 squalificati = altriCalciatori "SQUALIFICATI" $ text "p"
 
-indisponibili = altriCalciatori "INDISPONIBILI" $ text "span"
+indisponibili = altriCalciatori "INDISPONIBILI" $ init . init <$> text "span"
 
-inDubbio = altriCalciatori "IN DUBBIO" $ text "span"
+inDubbio = altriCalciatori "IN DUBBIO" $ init . init <$> text "span"
 
-ballottaggi = altriCalciatori "BALLOTTAGGI" $ texts "span"
+ballottaggi = altriCalciatori "BALLOTTAGGI" $ stripFirstSpaces <$> texts "span"
+    where stripFirstSpace :: String -> String
+          stripFirstSpace str = if head str == ' '
+                                   then tail str
+                                   else str
+          stripFirstSpaces :: [String] -> [String]
+          stripFirstSpaces = map stripFirstSpace
+
 
 diffidati = altriCalciatori "DIFFIDATI" $ text "span"
