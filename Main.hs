@@ -4,40 +4,98 @@ module Main where
 
 import Text.HTML.Scalpel
 import Control.Applicative
-import Control.Monad (guard)
+import Control.Monad (guard, forM_)
 import System.IO (readFile)
+import System.Environment (getArgs)
+
+import qualified Data.Set as Set
+import Data.List (sortBy)
+
+import qualified System.Console.ANSI as C
 
 data Role = Titolare | Riserva
-          deriving (Show)
+          deriving (Show, Eq, Ord)
+
+roleToSGR :: Role -> C.SGR
+roleToSGR Titolare = C.SetColor C.Foreground C.Vivid C.White
+roleToSGR Riserva  = C.SetColor C.Foreground C.Dull C.White
+
+data Position = P | D | C | A
+              deriving(Show, Eq, Ord)
+
+positionFromString :: String -> Position
+positionFromString "P" = P
+positionFromString "D" = D
+positionFromString "C" = C
+positionFromString "A" = A
+
+positionToSGR :: Position -> C.SGR
+positionToSGR P = C.SetColor C.Foreground C.Dull C.Yellow
+positionToSGR D = C.SetColor C.Foreground C.Dull C.Blue
+positionToSGR C = C.SetColor C.Foreground C.Dull C.Green
+positionToSGR A = C.SetColor C.Foreground C.Dull C.Red
 
 data PlayerInfos = PlayerInfos
                  { name :: String
-                 , position :: String
+                 , position :: Position
                  , role :: Role
                  , perc :: String
+                 {-, squalificato :: Bool
+                 , indisponibile :: String
+                 , dubbio :: Bool
+                 , diffidato :: Bool -}
                  }
                  deriving (Show)
+
+orderPlayers :: PlayerInfos -> PlayerInfos -> Ordering
+orderPlayers (PlayerInfos n1 p1 r1 _) (PlayerInfos n2 p2 r2 _)
+    | roleOrder == EQ = if posOrder == EQ
+                           then compare n1 n2
+                           else posOrder
+
+    | otherwise       = roleOrder
+
+    where roleOrder = compare r1 r2
+          posOrder  = compare p1 p2
 
 
 main :: IO ()
 main = do
-    -- str <- readFile "Prova.html"
-    -- let res = scrapeStringLike str myScraper
-    res <- scrapeURL "http://www.fantagazzetta.com/probabili-formazioni-serie-a" myScraper
+    url    <- head . lines <$> readFile "Sito.config"
+    config <- readFile "Rosa.config"
+    let rosaMap = makeMap config
+    res <- scrapeURL url (myScraper rosaMap)
     case res of
          Nothing -> putStrLn "Errore"
-         Just s  -> mapM_ (putStrLn . show) s
+         Just s  -> outputPlayers $ sortBy orderPlayers s
+
+
+outputPlayers :: [PlayerInfos] -> IO ()
+outputPlayers players = forM_ players (\player -> do
+    C.setSGR [roleToSGR (Main.role player)]
+    putStr $ show (role player)
+    C.setSGR [positionToSGR (Main.position player)]
+    putStr $ " " ++ show (Main.position player) 
+    C.setSGR []
+    putStrLn $ " " ++ name player ++ " " ++ perc player) 
+
+makeMap :: String -> Set.Set String
+makeMap config = Set.fromList $ lines config
 
 
 -- myScraper :: Scraper String [String]
-myScraper = chroot ("div" @: ["id" @= "artContainer"] // ("div" @: ["id" @= "sqtab"])) innerScraper
-    where innerScraper = chroots ("div" @: [hasClass "pgroup"]) ballottaggi -- (Left <$> squalificati <|> Right <$> diffidati)
+myScraper m = chroot ("div" @: ["id" @= "artContainer"] // ("div" @: ["id" @= "sqtab"])) innerScraper
+    where innerScraper = chroots ("div" @: [hasClass "pgroup"]) (player m) -- (Left <$> squalificati <|> Right <$> diffidati)
 
-player = do
+player m = do
     name <- text (tagSelector "a")
+
+    -- filter out players we don't care about
+    guard (name `Set.member` m)
+
     pos <- text ("span" @: [hasClass "role"])
     (role, perc) <- ((,) Titolare <$> text ("span" @: [hasClass "perc"])) <|> ((,) Riserva <$> text ("div" @: [hasClass "is"]))
-    return $ PlayerInfos name pos role perc
+    return $ PlayerInfos name (positionFromString pos) role perc
 
 
 altriCalciatori :: String -> Scraper String a -> Scraper String [a]
