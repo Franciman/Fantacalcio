@@ -4,7 +4,7 @@ module Main where
 
 import Text.HTML.Scalpel
 import Control.Applicative
-import Control.Monad (guard, forM_)
+import Control.Monad (guard, forM_, forM)
 import System.IO (readFile)
 import System.Environment (getArgs)
 
@@ -44,11 +44,12 @@ data PlayerInfos = PlayerInfos
                  , indisponibile :: String
                  , dubbio :: Bool
                  , diffidato :: Bool -}
+                 , matchPlaying :: String
                  }
                  deriving (Show)
 
 orderPlayers :: PlayerInfos -> PlayerInfos -> Ordering
-orderPlayers (PlayerInfos n1 p1 r1 _) (PlayerInfos n2 p2 r2 _)
+orderPlayers (PlayerInfos n1 p1 r1 _ _) (PlayerInfos n2 p2 r2 _ _)
     | roleOrder == EQ = if posOrder == EQ
                            then compare n1 n2
                            else posOrder
@@ -77,17 +78,29 @@ outputPlayers players = forM_ players (\player -> do
     C.setSGR [positionToSGR (Main.position player)]
     putStr $ " " ++ show (Main.position player) 
     C.setSGR []
-    putStrLn $ " " ++ name player ++ " " ++ perc player) 
+    putStrLn $ " " ++ name player ++ " " ++ perc player ++ " " ++ matchPlaying player)
 
 makeMap :: String -> Set.Set String
 makeMap config = Set.fromList $ lines config
 
 
 -- myScraper :: Scraper String [String]
-myScraper m = chroot ("div" @: ["id" @= "artContainer"] // ("div" @: ["id" @= "sqtab"])) innerScraper
-    where innerScraper = chroots ("div" @: [hasClass "pgroup"]) (player m) -- (Left <$> squalificati <|> Right <$> diffidati)
+--myScraper m = chroot ("div" @: ["id" @= "artContainer"] // ("div" @: ["id" @= "sqtab"])) innerScraper
+    --where innerScraper = chroots ("div" @: [hasClass "pgroup"]) (player m) -- (Left <$> squalificati <|> Right <$> diffidati)
 
-player m = do
+myScraper :: Set.Set String -> Scraper String [PlayerInfos]
+myScraper m = concat <$> (tabellaPartite >>= mapM (playersScraper m))
+
+tabellaPartite :: Scraper String [String]
+tabellaPartite = chroot ("ul" @: ["id" @= "mnavtabs2"]) innerScraper
+    where innerScraper = filter (not . null) .  map tail <$>
+                  chroots (tagSelector "li") (attr "href" (tagSelector "a"))
+
+playersScraper :: Set.Set String -> String -> Scraper String [PlayerInfos]
+playersScraper m matchId = chroot ("div" @: ["id" @= matchId]) innerScraper
+    where innerScraper = chroots ("div" @: [hasClass "pgroup"]) (player m matchId)
+
+player m matchId = do
     name <- text (tagSelector "a")
 
     -- filter out players we don't care about
@@ -95,7 +108,7 @@ player m = do
 
     pos <- text ("span" @: [hasClass "role"])
     (role, perc) <- ((,) Titolare <$> text ("span" @: [hasClass "perc"])) <|> ((,) Riserva <$> text ("div" @: [hasClass "is"]))
-    return $ PlayerInfos name (positionFromString pos) role perc
+    return $ PlayerInfos name (positionFromString pos) role perc matchId
 
 
 altriCalciatori :: String -> Scraper String a -> Scraper String [a]
