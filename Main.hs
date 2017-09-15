@@ -10,6 +10,7 @@ import System.Environment (getArgs)
 
 import qualified Data.Set as Set
 import Data.List (sortBy)
+import Data.Char (toUpper)
 
 import qualified System.Console.ANSI as C
 
@@ -71,14 +72,43 @@ main = do
          Just s  -> outputPlayers $ sortBy orderPlayers s
 
 
+--outputPlayers :: [PlayerInfos] -> IO ()
+--outputPlayers players = forM_ players $ \player -> do
+    --C.setSGR [roleToSGR (Main.role player)]
+    --putStr $ show (role player)
+    --C.setSGR [positionToSGR (Main.position player)]
+    --putStr $ ":" ++ show (Main.position player)
+    --C.setSGR []
+    --putStr $ ":" ++ name player ++ ":" ++ perc player
+    --putStrLn $ ':' : formatMatch (matchPlaying player)
+
+
 outputPlayers :: [PlayerInfos] -> IO ()
-outputPlayers players = forM_ players (\player -> do
-    C.setSGR [roleToSGR (Main.role player)]
-    putStr $ show (role player)
-    C.setSGR [positionToSGR (Main.position player)]
-    putStr $ " " ++ show (Main.position player) 
-    C.setSGR []
-    putStrLn $ " " ++ name player ++ " " ++ perc player ++ " " ++ matchPlaying player)
+outputPlayers players = let roleColumnWidth = length ("Titolare" :: String)
+                            positionColumnWidth = 1
+                            nameColumnWidth = maximum (map (length . name) players)
+                            percColumnWidth = length ("I.S. 100%" :: String)
+                            pad str len     = str ++ take (len - length str) (repeat ' ')
+
+                        in forM_ players $ \player -> do
+                          C.setSGR [roleToSGR (Main.role player)]
+                          putStr $ pad (show (role player)) roleColumnWidth
+                          C.setSGR [positionToSGR (Main.position player)]
+                          putStr $ "   " ++ pad (show (Main.position player)) positionColumnWidth
+                          C.setSGR []
+                          putStr $ "   " ++ pad (name player) nameColumnWidth
+                          putStr $ "   " ++ pad (perc player) percColumnWidth
+                          putStrLn $ "   " ++ formatMatch (matchPlaying player)
+
+
+
+formatMatch :: String -> String
+formatMatch str = let (homeTeam, awayTeam') = break (== '-') str
+                      awayTeam              = tail awayTeam' -- Remove the '-'
+                  in capitalizedString homeTeam ++ " vs " ++ capitalizedString awayTeam
+    where capitalizedString :: String -> String
+          capitalizedString (s:ss) = toUpper s : ss
+
 
 makeMap :: String -> Set.Set String
 makeMap config = Set.fromList $ lines config
